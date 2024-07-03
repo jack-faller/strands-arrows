@@ -115,9 +115,15 @@ void activate(GtkApplication *app, gpointer app_info) {
 
 void draw_arrow_rel_to(cairo_t *cr, double x, double y) {
   const float head_length = 7;
-  double norm_length = sqrt(x * x + y * y);
-  double xnorm = x / norm_length, ynorm = norm_length;
+  double length = sqrt(x * x + y * y), xnorm = x / length, ynorm = y / length;
   cairo_rel_line_to(cr, x, y);
+  cairo_get_current_point(cr, &x, &y);
+  double scale = sqrt(0.5) * head_length;
+  for (int sign = -1; sign <= 1; sign += 2) {
+    cairo_move_to(cr, x, y);
+    cairo_rel_line_to(cr, scale * -(xnorm + sign * ynorm),
+                      scale * (sign * xnorm - ynorm));
+  }
   cairo_stroke(cr);
 }
 void draw(GtkDrawingArea *area, cairo_t *cr, int width, int height,
