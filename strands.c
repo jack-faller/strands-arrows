@@ -40,7 +40,7 @@ static void redraw(GtkWidget *ignored, gpointer app_info);
 
 static void draw(GtkDrawingArea *area, cairo_t *cr, int width, int height,
                  gpointer app_info);
-static void draw_arrow_rel_to(cairo_t *cr, double x, double y);
+static void rel_arrow_to(cairo_t *cr, double x, double y);
 static void activate(GtkApplication *area, gpointer app_info);
 static void on_clear(GtkWidget *button, gpointer app_info);
 static void on_load(GtkWidget *button, gpointer app_info);
@@ -113,7 +113,7 @@ void activate(GtkApplication *app, gpointer app_info) {
   gtk_window_present(GTK_WINDOW(window));
 }
 
-void draw_arrow_rel_to(cairo_t *cr, double x, double y) {
+void rel_arrow_to(cairo_t *cr, double x, double y) {
   const float head_length = 7;
   double length = sqrt(x * x + y * y), xnorm = x / length, ynorm = y / length;
   cairo_rel_line_to(cr, x, y);
@@ -141,7 +141,7 @@ void draw(GtkDrawingArea *area, cairo_t *cr, int width, int height,
 
   double frequency_max = (double)info->counts.max / info->counts.total;
   double frequency_threshold =
-      frequency_max * gtk_adjustment_get_value(info->slider);
+      frequency_max * (1 - gtk_adjustment_get_value(info->slider));
 
   for (int line = 0; line < line_count; ++line) {
     bool has_line[3] = {line != 0, true, line != line_count - 1};
@@ -149,7 +149,7 @@ void draw(GtkDrawingArea *area, cairo_t *cr, int width, int height,
     gunichar surrounding[LENGTH(lines)][3] = {};
     for (int i = 0; i < LENGTH(lines); ++i)
       if (has_line[i]) {
-        gtk_text_buffer_get_iter_at_line(info->buffer, &lines[i], line);
+        gtk_text_buffer_get_iter_at_line(info->buffer, &lines[i], line + i - 1);
         surrounding[i][2] = next_in_line(&lines[i]);
       }
     for (int column = 0; surrounding[1][2] != 0; ++column) {
@@ -166,6 +166,31 @@ void draw(GtkDrawingArea *area, cairo_t *cr, int width, int height,
       cairo_move_to(cr, center_x - extents.width / 2,
                     center_y + font_size / 2.);
       cairo_show_text(cr, current_letter);
+      for (int y1 = -1; y1 <= 1; ++y1)
+        for (int x1 = -1; x1 <= 1; ++x1)
+          if ((x1 != 0 || y1 != 0) && 0 != surrounding[y1 + 1][x1 + 1]) {
+            double frequency = 0;
+            for (int y0 = -1; y0 <= 1; ++y0)
+              for (int x0 = -1; x0 <= 1; ++x0)
+                if ((x0 != 0 || y0 != 0) && (x0 != x1 || y0 != y1) &&
+                    0 != surrounding[y0 + 1][x0 + 1]) {
+                  char buf[N_UTF8_SIZE(3)];
+                  gunichar chars[3] = {surrounding[y0 + 1][x0 + 1],
+                                       surrounding[1][1],
+                                       surrounding[y1 + 1][x1 + 1]};
+                  contract_utf8(buf, chars, LENGTH(chars));
+                  frequency =
+                      MAX(frequency,
+                          (size_t)g_hash_table_lookup(info->counts.table, buf) /
+                              (double)info->counts.total);
+                }
+            if (frequency > frequency_threshold) {
+              cairo_move_to(cr, center_x + x1 * (font_size / 2. + arrow_gap),
+                            center_y + y1 * (font_size / 2. + arrow_gap));
+              rel_arrow_to(cr, (letter_gap - font_size - arrow_gap * 2) * x1,
+                           (letter_gap - font_size - arrow_gap * 2) * y1);
+            }
+          }
     }
   }
 }
